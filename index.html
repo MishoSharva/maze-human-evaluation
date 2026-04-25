@@ -1,0 +1,681 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Mazes</title>
+<style>
+  * {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+  :root{--bg:#0f1720;--panel:#071028;--muted:#9aa4b2}
+  html,body{height:100%;margin:0;background:var(--bg);color:#e6eef6;font-family:Inter,system-ui,Segoe UI,Roboto,Arial;display:flex;flex-direction:column;align-items:center}
+  header{width:100%;max-width:1100px;padding:10px;display:flex;align-items:center;gap:8px;box-sizing:border-box}
+  h1{margin:0;font-size:18px}
+  canvas{background:#ffffff;border-radius:8px;touch-action:none;max-width:100%;height:auto}
+  .info{width:100%;max-width:1100px;padding:8px;display:flex;gap:12px;align-items:center;color:var(--muted);font-size:13px;box-sizing:border-box}
+  .badge{padding:6px;border-radius:8px;font-size:13px}
+  .algoLabel{background:transparent;color:var(--muted);font-size:13px}
+  html,body,canvas{-webkit-user-select:none;-ms-user-select:none;user-select:none}
+  @media (max-width:600px){ h1{font-size:16px} }
+
+  #canvasWrap {
+    flex:1;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    width:100%;
+    max-width:1100px;
+    padding:8px;
+    box-sizing:border-box;
+    position: relative;
+  }
+
+  .overlay {
+    position: absolute;
+    top: 10px;
+    left: 0;
+    width: 100%;
+    height: 97%;
+    background: rgba(20,20,20,0.55);
+    backdrop-filter: blur(6px);
+    color: #ffffff;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.25s ease;
+    user-select: none;
+    text-align: center;
+  }
+
+  .overlay.visible {
+    opacity: 1;
+    pointer-events: all;
+  }
+
+  .primaryBtn {
+    margin-bottom: 18px;
+    padding: 12px 20px;
+    border-radius: 10px;
+    background: #eb1515;
+    color: #fff;
+    font-weight: 700;
+    border: none;
+    cursor: pointer;
+    font-size: 20px;
+    box-shadow: 0 10px 28px rgba(31,143,255,0.12);
+    transition: transform .18s ease, background .18s ease;
+  }
+  .primaryBtn:hover { transform: scale(1.06); background: #ff4d4d; }
+  .primaryBtn:active { transform: translateY(1px); }
+
+  .introTitle { font-size: 30px; font-weight:700; margin-bottom:20px; color:#fff; }
+  .introPoints { color:#ffffff; font-size:16px; line-height:1.6; margin-bottom:30px; max-width:320px; }
+  .introPoints .point {
+  margin: 10px 0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial;
+}
+
+.introPoints .pointb,
+.introPoints .pointr {
+  display: inline; 
+  font-weight: 800;
+  margin-top:10px;
+}
+
+.introPoints .pointb {
+  color: #075cb1;
+  font-weight:800; font-size:20px;
+}
+
+.introPoints .pointr {
+  color: #eb1515;
+  font-weight:800;font-size:20px;
+}
+
+
+  .solvedText { font-size: 64px; font-weight: bold; margin-bottom: 12px; }
+  .solvedTime { font-size: 36px; font-weight: 500; color: #ffffff; }
+
+  .algoDisplay {
+    margin-top: 10px;
+    color: var(--muted);
+    font-size: 14px;
+    text-align: center;
+    width:100%;
+    max-width:1100px;
+  }
+
+</style>
+</head>
+<body>
+  <header>
+    <h1>Mazes</h1>
+  </header>
+
+  <div id="canvasWrap">
+    <canvas id="maze" width="720" height="720"></canvas>
+
+    <div id="introOverlay" class="overlay" aria-hidden="true">
+      <div class="introTitle">Solving Mazes</div>
+      <div class="introPoints">
+        <div class="point">1. Trace a path from <div class="pointb">BLUE</div> to <div class="pointr">RED</div> as fast as possible - <strong>YOU ARE BEING TIMED!</strong></div>
+        <div class="point">2. You may backtrack by dragging/clicking back over</div>
+        <div class="point">3. Use your <strong>INDEX FINGER</strong> if on a phone or use a <strong>MOUSE</strong></div>
+      </div>
+      <button id="startBtn" class="primaryBtn" type="button">START</button>
+    </div>
+
+    <div id="solvedOverlay" class="overlay" aria-hidden="true">
+      <button id="newOverlayBtn" class="primaryBtn" type="button">New Maze</button>
+      <div class="solvedText">SOLVED!</div>
+      <div class="solvedTime"></div>
+    </div>
+  </div>
+
+  <div class="algoDisplay" id="algoDisplay">—</div>
+
+  <div class="info">
+    <div class="badge"><span id="timeLabel">00:00.000</span></div>
+    <div class="badge">Status: <span id="status">idle</span></div>
+  </div>
+
+<script>
+const DEFAULT_SIZE = 8;
+let solved = false;
+const ALGOS = ['dfs','aldous','prim','wilson','kruskal','huntkill'];
+const ALGO_LABELS = {
+  dfs: 'DFS',
+  aldous: 'Aldous-Broder',
+  prim: 'Prim',
+  wilson: 'Wilson',
+  kruskal: 'Kruskal',
+  huntkill: 'Hunt & Kill'
+};
+
+function shuffle(arr){
+  const a = arr.slice();
+  for(let i=a.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    [a[i],a[j]]=[a[j],a[i]];
+  }
+  return a;
+}
+
+let algoOrder = shuffle(ALGOS);
+let currentIndex = 0;
+function advanceSequenceAndGetAlgo(){
+  if(currentIndex >= algoOrder.length){
+    algoOrder = shuffle(ALGOS);
+    currentIndex = 0;
+  }
+  const algo = algoOrder[currentIndex];
+  currentIndex++;
+  return algo;
+}
+
+let MOVE_RADIUS = 23;
+const MOVE_RADIUS_SCALE = 1.65;
+const MIN_MOVE_RADIUS_PX = 1;
+
+const canvas = document.getElementById('maze');
+const ctx = canvas.getContext('2d');
+const timeLabel = document.getElementById('timeLabel');
+const statusEl = document.getElementById('status');
+const newOverlayBtn = document.getElementById('newOverlayBtn');
+const solvedOverlay = document.getElementById('solvedOverlay');
+const solvedTimeEl = document.querySelector('#solvedOverlay .solvedTime');
+const algoDisplayEl = document.getElementById('algoDisplay');
+const introOverlay = document.getElementById('introOverlay');
+const startBtn = document.getElementById('startBtn');
+
+let rows = DEFAULT_SIZE, cols = DEFAULT_SIZE;
+let cellSize = Math.floor(canvas.width / cols);
+let grid = [];
+let player = {x:0,y:0}, goal = {x:cols-1,y:rows-1};
+let started = false, startTime = 0, timerId = null;
+let currentPath = [{x:0,y:0}];
+let __MAZE_PUBLIC_IP = null;
+async function getPublicIP() {
+  if (__MAZE_PUBLIC_IP) return __MAZE_PUBLIC_IP;
+  try {
+    const r = await fetch('https://api.ipify.org?format=json', { cache: 'no-store' });
+    const j = await r.json();
+    __MAZE_PUBLIC_IP = j.ip || '';
+  } catch(_) {
+    __MAZE_PUBLIC_IP = '';
+  }
+  return __MAZE_PUBLIC_IP;
+}
+
+async function reportSolveToSheets({ algo, size, time_ms }) {
+  const payload = {
+    algo,
+    size,
+    time_ms,
+    key: 'mzK1_3Q7yA9wP4rZ'
+  };
+
+  //const url = 'script_link to be written';
+// Can be done with the code:
+// const SHEET_ID   = 'the id';
+// const SHEET_NAME = 'Sheet1';
+// const SECRET     = '___';  // shared secret the frontend will send
+
+// function doPost(e) {
+//   try {
+//     const data = JSON.parse(e.postData && e.postData.contents || '{}');
+
+//     if (data.key !== SECRET) {
+//       return _json({ ok:false, error:'unauthorized' }, 401);
+//     }
+
+//     const algo    = String(data.algo || '').slice(0, 40);
+//     const size    = String(data.size || '').slice(0, 16);
+//     const time_ms = Number.isFinite(Number(data.time_ms)) ? Math.round(Number(data.time_ms)) : 0;
+
+//     if (!algo || !time_ms || time_ms < 50 || time_ms > 24*60*60*1000) {
+//       return _json({ ok:false, error:'bad_payload' }, 400);
+//     }
+
+//     const ss = SpreadsheetApp.openById(SHEET_ID);
+//     const sh = ss.getSheetByName(SHEET_NAME) || ss.getSheets()[0];
+
+//     // Columns: Timestamp | Algorithm | Size | Time_ms
+//     sh.appendRow([new Date(), algo, size, time_ms]);
+
+//     return _json({ ok:true });
+//   } catch (err) {
+//     return _json({ ok:false, error:String(err) }, 500);
+//   }
+// }
+
+// function _json(obj, code) {
+//   const out = ContentService.createTextOutput(JSON.stringify(obj))
+//     .setMimeType(ContentService.MimeType.JSON);
+//   if (code) {
+//     // Apps Script can’t set HTTP status directly; returning body with error is fine.
+//   }
+//   return out;
+// }
+
+  const data = JSON.stringify(payload);
+  const beaconBlob = new Blob([data], { type: 'text/plain;charset=utf-8' });
+  const sent = navigator.sendBeacon && navigator.sendBeacon(url, beaconBlob);
+  if (sent) return;
+  try {
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: data,
+      keepalive: true
+    });
+    try { const j = await resp.json(); if (!j.ok) console.warn('Sheets reply', j); } catch {}
+  } catch (e) {
+    console.warn('Sheet log failed', e);
+  }
+}
+
+function resizeCanvas(){
+  const wrap = document.getElementById('canvasWrap');
+  const size = Math.min(wrap.clientWidth - 8, window.innerHeight - 160, 900);
+  canvas.width = canvas.height = Math.max(240, size);
+  cellSize = Math.floor(canvas.width / cols);
+  updateMoveRadius();
+}
+window.addEventListener('resize', ()=>{ resizeCanvas(); draw(); });
+resizeCanvas();
+function updateMoveRadius(){ MOVE_RADIUS = Math.max(MIN_MOVE_RADIUS_PX, Math.round(cellSize * MOVE_RADIUS_SCALE)); }
+
+function makeEmptyGrid(r,c){
+  rows=r; cols=c;
+  const g = [];
+  for(let y=0;y<r;y++){
+    const row=[];
+    for(let x=0;x<c;x++){
+      row.push({x,y,walls:[true,true,true,true], visited:false});
+    }
+    g.push(row);
+  }
+  return g;
+}
+function inBounds(x,y){ return x>=0 && y>=0 && x<cols && y<rows; }
+function neighs(cell){
+  const d = [[0,-1],[1,0],[0,1],[-1,0]];
+  const out=[];
+  for(let i=0;i<4;i++){
+    const nx=cell.x + d[i][0], ny=cell.y + d[i][1];
+    if(inBounds(nx,ny)) out.push({dir:i,cell:grid[ny][nx]});
+  }
+  return out;
+}
+function removeWalls(a,b){
+  const dx=b.x-a.x, dy=b.y-a.y;
+  if(dx===1){ a.walls[1]=false; b.walls[3]=false; }
+  if(dx===-1){ a.walls[3]=false; b.walls[1]=false; }
+  if(dy===1){ a.walls[2]=false; b.walls[0]=false; }
+  if(dy===-1){ a.walls[0]=false; b.walls[2]=false; }
+}
+function forEachCell(fn){ for(let y=0;y<rows;y++) for(let x=0;x<cols;x++) fn(grid[y][x]); }
+
+/* THE ALGORITHMS*/
+function generateDFS(){
+  grid = makeEmptyGrid(rows,cols);
+  forEachCell(c=>c.visited=false);
+  const start = grid[0][0]; start.visited=true;
+  const stack = [start];
+  while(stack.length){
+    const current = stack[stack.length-1];
+    const available = neighs(current).filter(n => !n.cell.visited);
+    if(available.length){
+      const pick = available[Math.floor(Math.random()*available.length)];
+      removeWalls(current,pick.cell);
+      pick.cell.visited = true;
+      stack.push(pick.cell);
+    } else stack.pop();
+  }
+}
+function generatePrim(){
+  grid = makeEmptyGrid(rows,cols);
+  const visited = new Set(); const front=[];
+  const startY = Math.floor(Math.random()*rows), startX = Math.floor(Math.random()*cols);
+  visited.add(`${startX},${startY}`);
+  const addFront=(x,y)=>{
+    if(y>0 && !visited.has(`${x},${y-1}`)) front.push({from:[x,y],to:[x,y-1]});
+    if(y<rows-1 && !visited.has(`${x},${y+1}`)) front.push({from:[x,y],to:[x,y+1]});
+    if(x>0 && !visited.has(`${x-1},${y}`)) front.push({from:[x,y],to:[x-1,y]});
+    if(x<cols-1 && !visited.has(`${x+1},${y}`)) front.push({from:[x,y],to:[x+1,y]});
+  };
+  addFront(startX,startY);
+  while(front.length){
+    const idx=Math.floor(Math.random()*front.length), f=front.splice(idx,1)[0];
+    const tx=f.to[0], ty=f.to[1], fx=f.from[0], fy=f.from[1];
+    if(!visited.has(`${tx},${ty}`)){
+      removeWalls(grid[fy][fx], grid[ty][tx]);
+      visited.add(`${tx},${ty}`);
+      addFront(tx,ty);
+    }
+  }
+}
+function generateKruskal(){
+  grid = makeEmptyGrid(rows,cols);
+  const parent = new Map();
+  function find(cell){ while(parent.get(cell)!==cell){ parent.set(cell,parent.get(parent.get(cell))); cell=parent.get(cell);} return parent.get(cell); }
+  function union(a,b){ const pa=find(a), pb=find(b); if(pa!==pb){ parent.set(pa,pb); return true;} return false; }
+  for(let y=0;y<rows;y++) for(let x=0;x<cols;x++) parent.set(`${x},${y}`, `${x},${y}`);
+  const edges=[];
+  for(let y=0;y<rows;y++) for(let x=0;x<cols;x++){
+    if(x<cols-1) edges.push([[x,y],[x+1,y]]);
+    if(y<rows-1) edges.push([[x,y],[x,y+1]]);
+  }
+  for(let i=edges.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [edges[i],edges[j]]=[edges[j],edges[i]]; }
+  for(const e of edges){ const [a,b]=e; if(union(`${a[0]},${a[1]}`,`${b[0]},${b[1]}`)) removeWalls(grid[a[1]][a[0]], grid[b[1]][b[0]]); }
+}
+function generateAldous(){
+  grid = makeEmptyGrid(rows,cols);
+  const visited=new Set(); let x=Math.floor(Math.random()*cols), y=Math.floor(Math.random()*rows);
+  visited.add(`${x},${y}`);
+  while(visited.size < rows*cols){
+    const options=[]; if(y>0) options.push([x,y-1]); if(y<rows-1) options.push([x,y+1]); if(x>0) options.push([x-1,y]); if(x<cols-1) options.push([x+1,y]);
+    const pick=options[Math.floor(Math.random()*options.length)]; const nx=pick[0], ny=pick[1];
+    if(!visited.has(`${nx},${ny}`)){ removeWalls(grid[y][x], grid[ny][nx]); visited.add(`${nx},${ny}`); }
+    x=nx; y=ny;
+  }
+}
+function generateWilsons(){
+  grid = makeEmptyGrid(rows,cols);
+  const unvisited = new Set(); for(let y=0;y<rows;y++) for(let x=0;x<cols;x++) unvisited.add(`${x},${y}`);
+  const pickOne = ()=>{ const arr=Array.from(unvisited); return arr[Math.floor(Math.random()*arr.length)]; };
+  const s = pickOne().split(',').map(Number); unvisited.delete(`${s[0]},${s[1]}`); const inMaze=new Set([`${s[0]},${s[1]}`]);
+  while(unvisited.size){
+    const arr = Array.from(unvisited); let walkStart = arr[Math.floor(Math.random()*arr.length)].split(',').map(Number);
+    let path=[walkStart]; const seen=new Map(); seen.set(`${walkStart[0]},${walkStart[1]}`,0);
+    let curr=walkStart, steps=0, stepLimit=rows*cols*2;
+    while(!inMaze.has(`${curr[0]},${curr[1]}`) && steps<stepLimit){
+      const [cx,cy]=curr; const options=[]; if(cy>0) options.push([cx,cy-1]); if(cy<rows-1) options.push([cx,cy+1]); if(cx>0) options.push([cx-1,cy]); if(cx<cols-1) options.push([cx+1,cy]);
+      const next = options[Math.floor(Math.random()*options.length)]; const key=`${next[0]},${next[1]}`;
+      if(seen.has(key)){ const i=seen.get(key); path = path.slice(0,i+1); seen.clear(); path.forEach((p,i)=>seen.set(`${p[0]},${p[1]}`, i)); }
+      else { path.push(next); seen.set(key, path.length-1); }
+      curr = next; steps++;
+    }
+    if(steps>=stepLimit) continue;
+    for(let i=0;i<path.length-1;i++){ const a=path[i], b=path[i+1]; removeWalls(grid[a[1]][a[0]], grid[b[1]][b[0]]); inMaze.add(`${a[0]},${a[1]}`); unvisited.delete(`${a[0]},${a[1]}`); }
+    inMaze.add(`${path[path.length-1][0]},${path[path.length-1][1]}`); unvisited.delete(`${path[path.length-1][0]},${path[path.length-1][1]}`);
+  }
+}
+function generateHuntAndKill(){
+  grid = makeEmptyGrid(rows,cols); const visited=new Set(); let x=Math.floor(Math.random()*cols), y=Math.floor(Math.random()*rows); visited.add(`${x},${y}`);
+  while(true){
+    const neighborsAvail=[]; if(y>0 && !visited.has(`${x},${y-1}`)) neighborsAvail.push([x,y-1]); if(y<rows-1 && !visited.has(`${x},${y+1}`)) neighborsAvail.push([x,y+1]);
+    if(x>0 && !visited.has(`${x-1},${y}`)) neighborsAvail.push([x-1,y]); if(x<cols-1 && !visited.has(`${x+1},${y}`)) neighborsAvail.push([x+1,y]);
+    if(neighborsAvail.length){ const pick = neighborsAvail[Math.floor(Math.random()*neighborsAvail.length)]; removeWalls(grid[y][x], grid[pick[1]][pick[0]]); x=pick[0]; y=pick[1]; visited.add(`${x},${y}`); }
+    else {
+      let found=false;
+      for(let j=0;j<rows && !found;j++){
+        for(let i=0;i<cols && !found;i++){
+          const key=`${i},${j}`;
+          if(!visited.has(key)){
+            const neigh=[]; if(j>0 && visited.has(`${i},${j-1}`)) neigh.push([i,j-1]); if(j<rows-1 && visited.has(`${i},${j+1}`)) neigh.push([i,j+1]);
+            if(i>0 && visited.has(`${i-1},${j}`)) neigh.push([i-1,j]); if(i<cols-1 && visited.has(`${i+1},${j}`)) neigh.push([i+1,j]);
+            if(neigh.length){ const pick=neigh[Math.floor(Math.random()*neigh.length)]; removeWalls(grid[j][i], grid[pick[1]][pick[0]]); x=i; y=j; visited.add(`${x},${y}`); found=true; }
+          }
+        }
+      }
+      if(!found) break;
+    }
+  }
+}
+
+function generate(algo){
+  statusEl.textContent = 'generating';
+  switch(algo){
+    case 'dfs': generateDFS(); break;
+    case 'prim': generatePrim(); break;
+    case 'kruskal': generateKruskal(); break;
+    case 'aldous': generateAldous(); break;
+    case 'wilson': generateWilsons(); break;
+    case 'huntkill': generateHuntAndKill(); break;
+    default: generateDFS();
+  }
+  player = {x:0,y:0};
+  goal = {x:cols-1,y:rows-1};
+  currentPath = [{x:0,y:0}];
+
+  if(timerId){ clearInterval(timerId); timerId=null; }
+  timeLabel.textContent = '00:00.000';
+  statusEl.textContent = 'ready';
+  algoDisplayEl.textContent = (ALGO_LABELS[algo] || algo);
+  draw();
+
+  started = false;
+  startTimer();
+}
+
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle = '#fff'; ctx.fillRect(0,0,canvas.width,canvas.height);
+  const cs = cellSize; const totalW = cs*cols, totalH = cs*rows;
+  const ox = Math.floor((canvas.width - totalW)/2), oy = Math.floor((canvas.height - totalH)/2);
+
+  ctx.lineWidth = Math.max(0.5, cs * 0.04);
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = '#111';
+  for(let y=0;y<rows;y++){
+    for(let x=0;x<cols;x++){
+      const c = grid[y][x]; const px=ox+x*cs, py=oy+y*cs;
+      if(c.walls[0]){ ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(px+cs,py); ctx.stroke(); }
+      if(c.walls[1]){ ctx.beginPath(); ctx.moveTo(px+cs,py); ctx.lineTo(px+cs,py+cs); ctx.stroke(); }
+      if(c.walls[2]){ ctx.beginPath(); ctx.moveTo(px,py+cs); ctx.lineTo(px+cs,py+cs); ctx.stroke(); }
+      if(c.walls[3]){ ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(px,py+cs); ctx.stroke(); }
+    }
+  }
+
+  if(currentPath.length>0){
+    ctx.lineWidth = Math.max(3, cs * 0.25);
+    ctx.strokeStyle = '#1f8fff';
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    for(let i=0;i<currentPath.length;i++){
+      const p=currentPath[i]; const cx=ox + p.x*cs + cs/2, cy=oy + p.y*cs + cs/2;
+      if(i===0) ctx.moveTo(cx,cy); else ctx.lineTo(cx,cy);
+    }
+    ctx.stroke();
+
+    const s = Math.max(4, cs*0.18);
+    ctx.fillStyle='#1f8fff'; ctx.beginPath(); const s0=currentPath[0]; ctx.arc(ox+s0.x*cs+cs/2, oy+s0.y*cs+cs/2, s,0,Math.PI*2); ctx.fill();
+    const last = currentPath[currentPath.length-1]; ctx.beginPath(); ctx.arc(ox+last.x*cs+cs/2, oy+last.y*cs+cs/2, Math.max(4,cs*0.28),0,Math.PI*2); ctx.fill();
+  }
+
+  ctx.fillStyle='#ff4d4d'; ctx.beginPath(); ctx.arc(ox+goal.x*cs+cs/2, oy+goal.y*cs+cs/2, Math.max(4,cs*0.28),0,Math.PI*2); ctx.fill();
+}
+
+function posToNearestCell(clientX,clientY){
+  const rect = canvas.getBoundingClientRect();
+  const cx = clientX - rect.left, cy = clientY - rect.top;
+  const cs = cellSize; const totalW = cs*cols, totalH = cs*rows;
+  const ox = Math.floor((canvas.width - totalW)/2), oy = Math.floor((canvas.height - totalH)/2);
+  const rx = Math.round((cx - ox - cs/2) / cs);
+  const ry = Math.round((cy - oy - cs/2) / cs);
+  const candX = Math.max(0, Math.min(cols-1, rx));
+  const candY = Math.max(0, Math.min(rows-1, ry));
+  const centerX = ox + candX*cs + cs/2;
+  const centerY = oy + candY*cs + cs/2;
+  const dx = cx - centerX, dy = cy - centerY;
+  const dist = Math.sqrt(dx*dx + dy*dy);
+  if(dist <= MOVE_RADIUS) return {x:candX, y:candY};
+  return null;
+}
+
+function canMoveBetween(a,b){
+  if(!a||!b) return false;
+  const dx=b.x-a.x, dy=b.y-a.y;
+  if(Math.abs(dx)+Math.abs(dy)!==1) return false;
+  const from = grid[a.y][a.x];
+  if(dx===1 && from.walls[1]) return false;
+  if(dx===-1 && from.walls[3]) return false;
+  if(dy===1 && from.walls[2]) return false;
+  if(dy===-1 && from.walls[0]) return false;
+  return true;
+}
+
+function startTimer(){
+  if(started) return;
+  started = true; startTime = performance.now();
+  statusEl.textContent = 'solving';
+  timerId = setInterval(()=>{ timeLabel.textContent = formatTime(performance.now() - startTime); }, 50);
+}
+function stopTimer(){
+  if(timerId){ clearInterval(timerId); timerId=null; }
+  statusEl.textContent = 'idle';
+}
+function formatTime(ms){
+  const s = Math.floor(ms/1000), mm = Math.floor(s/60), ss = s%60, msPart = Math.floor(ms%1000);
+  return `${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}.${String(msPart).padStart(3,'0')}`;
+}
+
+function handleTap(clientX,clientY){
+  if(solved) return;
+  const cell = posToNearestCell(clientX, clientY);
+  if(!cell) return;
+
+  for(let i=0;i<currentPath.length;i++){
+    if(currentPath[i].x===cell.x && currentPath[i].y===cell.y){
+      currentPath = currentPath.slice(0, i+1);
+      player = {x:cell.x,y:cell.y};
+      draw();
+      return;
+    }
+  }
+
+  const last = currentPath[currentPath.length-1];
+  if(Math.abs(cell.x-last.x)+Math.abs(cell.y-last.y) !== 1) return;
+  if(canMoveBetween(last, cell)){
+    currentPath.push({x:cell.x,y:cell.y});
+    player = {x:cell.x,y:cell.y};
+    draw();
+    if(player.x===goal.x && player.y===goal.y) finishAttempt();
+  }
+}
+
+let isPointerDown = false;
+canvas.addEventListener('pointerdown', (ev)=>{
+  canvas.setPointerCapture(ev.pointerId);
+  isPointerDown = true;
+  const cell = posToNearestCell(ev.clientX, ev.clientY);
+  if(!cell) return;
+  for(let i=0;i<currentPath.length;i++){
+    if(currentPath[i].x===cell.x && currentPath[i].y===cell.y){
+      currentPath = currentPath.slice(0, i+1);
+      player = {x:cell.x,y:cell.y};
+      draw();
+      return;
+    }
+  }
+});
+canvas.addEventListener('pointermove', (ev)=>{
+  if(!isPointerDown) return;
+  if(solved) return;
+  const cell = posToNearestCell(ev.clientX, ev.clientY);
+  if(!cell) return;
+  const last = currentPath[currentPath.length-1];
+  if(cell.x===last.x && cell.y===last.y) return;
+  const dist = Math.abs(cell.x-last.x)+Math.abs(cell.y-last.y);
+  if(dist !== 1) return;
+  if(currentPath.length >= 2){
+    const prev = currentPath[currentPath.length-2];
+    if(cell.x===prev.x && cell.y===prev.y){
+      currentPath.pop();
+      player = {x:cell.x,y:cell.y};
+      draw();
+      return;
+    }
+  }
+  if(canMoveBetween(last, cell)){
+    currentPath.push({x:cell.x,y:cell.y});
+    player = {x:cell.x,y:cell.y};
+    draw();
+    if(player.x===goal.x && player.y===goal.y) finishAttempt();
+  }
+});
+canvas.addEventListener('pointerup', (ev)=>{
+  isPointerDown = false;
+  try{ canvas.releasePointerCapture(ev.pointerId); }catch(e){}
+});
+canvas.addEventListener('click', (ev)=>{ handleTap(ev.clientX, ev.clientY); });
+
+function finishAttempt(){
+  stopTimer();
+  const elapsed = performance.now() - startTime;
+  solved = true;
+  timeLabel.textContent = formatTime(elapsed);
+
+  try{
+    const key='labyrinth_solves';
+    const arr = JSON.parse(localStorage.getItem(key) || '[]');
+    arr.push({algo: algoDisplayEl.textContent.replace('Algorithm used: ','') || '', size:`${cols}x${rows}`, time_ms: Math.round(elapsed), iso: new Date().toISOString()});
+    localStorage.setItem(key, JSON.stringify(arr));
+  }catch(e){ console.warn('save fail', e); }
+
+  statusEl.textContent = 'solved';
+  solvedTimeEl.textContent = formatTime(elapsed);
+  solvedOverlay.classList.add('visible');
+  reportSolveToSheets({
+  algo: algoDisplayEl.textContent || '',
+  size: `${cols}x${rows}`,
+  time_ms: Math.round(elapsed)
+});
+}
+
+newOverlayBtn.addEventListener('click', ()=>{
+  solvedOverlay.classList.remove('visible');
+  solved = false;
+  const nextAlgo = advanceSequenceAndGetAlgo();
+  generate(nextAlgo);
+});
+
+function startGeneration(){
+  rows = cols = DEFAULT_SIZE;
+  resizeCanvas();
+
+  algoOrder = shuffle(ALGOS);
+  currentIndex = 0;
+
+  const firstAlgo = advanceSequenceAndGetAlgo();
+  generate(firstAlgo);
+
+  currentPath = [{x:0,y:0}];
+  player = {x:0,y:0};
+  draw();
+}
+
+startBtn.addEventListener('click', ()=>{
+  try{ localStorage.setItem('maze_intro_seen', '1'); }catch(e){}
+  introOverlay.classList.remove('visible');
+  setTimeout(()=> startGeneration(), 120);
+});
+
+window.addEventListener('load', ()=>{
+  const seen = localStorage.getItem('maze_intro_seen');
+  let navType = '';
+  const entries = performance.getEntriesByType && performance.getEntriesByType('navigation');
+  if(entries && entries.length) navType = entries[0].type;
+  else if (performance && performance.navigation) navType = (performance.navigation.type === 1 ? 'reload' : '');
+
+  if(!seen || navType === 'reload'){
+    introOverlay.classList.add('visible');
+  } else {
+    startGeneration();
+  }
+});
+</script>
+</body>
+</html>
